@@ -2,12 +2,14 @@
 
 namespace App\Vito\Plugins\Dyanakiev\VitoVpsbgPlugin;
 
+use App\Actions\Server\InstallServer as CoreInstallServer;
 use App\DTOs\DynamicField;
 use App\DTOs\DynamicForm;
 use App\Plugins\AbstractPlugin;
 use App\Plugins\RegisterServerProvider;
 use App\Plugins\RegisterViews;
 use App\Vito\Plugins\Dyanakiev\VitoVpsbgPlugin\Actions\EnsureProviderUnused;
+use App\Vito\Plugins\Dyanakiev\VitoVpsbgPlugin\Actions\InstallServer;
 use App\Vito\Plugins\Dyanakiev\VitoVpsbgPlugin\ServerProviders\VPSBG;
 
 class Plugin extends AbstractPlugin
@@ -18,6 +20,8 @@ class Plugin extends AbstractPlugin
 
     public function boot(): void
     {
+        app()->extend(CoreInstallServer::class, fn (CoreInstallServer $installer): InstallServer => new InstallServer($installer));
+
         RegisterViews::make('vpsbg')->path(__DIR__.'/resources/views')->register();
 
         RegisterServerProvider::make(VPSBG::id())

@@ -19,6 +19,7 @@
         <include>
             <file>Plugin.php</file>
             <directory suffix=".php">Actions</directory>
+            <directory suffix=".php">Jobs</directory>
             <directory suffix=".php">ServerProviders</directory>
         </include>
     </source>

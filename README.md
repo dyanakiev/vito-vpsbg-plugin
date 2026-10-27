@@ -16,7 +16,9 @@ Select the VPSBG connection, **Sofia, Bulgaria**, a plan, and an Ubuntu version.
 
 Choose a billing cycle of **1, 3, 6, 12, or 24 months** on the server creation form. The default is one month, subject to the plan's minimum cycle. Creating a server charges the VPSBG account balance or saved card. If payment fails, check your balance, card, and unpaid orders in the VPSBG Console before retrying.
 
-Vito imports a separate SSH key for each server. The hostname is derived from the server name and prefixed with the Vito server ID. Readiness checks wait for a public IPv4 address, SSH access, cloud-init, and package-manager locks before starting Vito's installation. The initial readiness budget is 10 minutes, using Vito's existing readiness polling loop.
+Vito imports a separate SSH key for each server. The hostname is derived from the server name and prefixed with the Vito server ID. Readiness checks wait for a public IPv4 address, SSH access, cloud-init, and package-manager locks before starting Vito's installation.
+
+Boot readiness is checked through the SSH queue every 30 seconds for up to 30 minutes. Slow first-boot tasks are retried automatically without creating another VPS or order. The server stays **Installing** while waiting, and installation resumes once boot completes. Cloud-init errors and API authentication failures stop the checks; exhausting the window marks installation as failed. Automatic retries only cover initial boot and do not restart a partially completed installation.
 
 ## Disable or uninstall
 
@@ -45,7 +47,7 @@ Run the plugin tests against a separate Vito checkout with its Composer dependen
 VITO_PATH=/absolute/path/to/vito /absolute/path/to/vito/vendor/bin/pest --configuration phpunit.xml
 ```
 
-The test harness uses an in-memory database and fakes HTTP, SSH, and queues. CI runs the suite against Vito 4.2.1.
+The test harness uses an in-memory database and fakes HTTP and SSH. CI runs against Vito 4.2.1 and verifies delayed boot retries with an isolated Redis queue. Local runs skip the Redis integration check unless `VPSBG_TEST_REDIS=1` is set and Redis is available.
 
 ## License
 
