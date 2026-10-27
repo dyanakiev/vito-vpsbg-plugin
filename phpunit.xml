@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="https://schema.phpunit.de/13.0/phpunit.xsd" bootstrap="tests/bootstrap.php" colors="true">
+    <testsuites>
+        <testsuite name="VPSBG">
+            <directory suffix="Test.php">tests</directory>
+        </testsuite>
+    </testsuites>
+    <php>
+        <env name="APP_ENV" value="testing" force="true"/>
+        <env name="APP_KEY" value="base64:d9kZW60V4lFEw2SPn6UiJ0cfi04v80EWP0GZ6kzoxNg=" force="true"/>
+        <env name="DB_CONNECTION" value="sqlite" force="true"/>
+        <env name="BCRYPT_ROUNDS" value="4" force="true"/>
+        <env name="CACHE_STORE" value="array" force="true"/>
+        <env name="MAIL_MAILER" value="array" force="true"/>
+        <env name="QUEUE_CONNECTION" value="sync" force="true"/>
+        <env name="SESSION_DRIVER" value="array" force="true"/>
+    </php>
+    <source>
+        <include>
+            <file>Plugin.php</file>
+            <directory suffix=".php">Actions</directory>
+            <directory suffix=".php">ServerProviders</directory>
+        </include>
+    </source>
+</phpunit>
