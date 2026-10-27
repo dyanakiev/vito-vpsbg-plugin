@@ -8,7 +8,7 @@ A [VitoDeploy](https://vitodeploy.com) server-provider plugin for [VPSBG](https:
 2. Enable **VPSBG** in the Installed tab.
 3. In **Settings → Server Providers**, connect VPSBG with a [VPSBG API token](https://docs.vpsbg.eu/api/authentication) that has read and write abilities.
 
-The repository publishes GitHub releases for Vito's installer. No Composer package or changes to Vito's source files are required. Restart long-running queue workers after installing or updating the plugin.
+The repository publishes GitHub releases for Vito's installer. Restart long-running queue workers after installing or updating the plugin.
 
 ## Create a server
 
@@ -18,9 +18,7 @@ Choose a billing cycle of **1, 3, 6, 12, or 24 months** on the server creation f
 
 Vito imports a separate SSH key for each server. The hostname is derived from the server name and prefixed with the Vito server ID. Readiness checks wait for a public IPv4 address, SSH access, cloud-init, and package-manager locks before starting Vito's installation. The initial readiness budget is 10 minutes, using Vito's existing readiness polling loop.
 
-## Existing VPSBG connections
-
-The provider ID remains `vpsbg`. Existing connections, credentials, and managed servers continue to work when moving from the built-in provider in a Vito fork to this plugin. Enable the plugin before removing that fork's built-in registration.
+## Disable or uninstall
 
 Disabling or uninstalling is blocked while Vito still manages VPSBG servers. Remove those servers from Vito first; leave **delete from provider** disabled if you want to keep them at VPSBG. The plugin does not delete saved provider connections or credentials during its lifecycle.
 
@@ -47,7 +45,7 @@ Run the plugin tests against a separate Vito checkout with its Composer dependen
 VITO_PATH=/absolute/path/to/vito /absolute/path/to/vito/vendor/bin/pest --configuration phpunit.xml
 ```
 
-The test harness uses an in-memory database and fakes HTTP, SSH, and queues. CI runs the suite against stock Vito 4.2.1.
+The test harness uses an in-memory database and fakes HTTP, SSH, and queues. CI runs the suite against Vito 4.2.1.
 
 ## License
 
