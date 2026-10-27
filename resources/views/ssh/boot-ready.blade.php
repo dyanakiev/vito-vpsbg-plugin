@@ -3,8 +3,8 @@ if command -v cloud-init >/dev/null 2>&1; then
     case "$__vpsbg_state" in
         done|disabled) ;;
         error)
-            echo "Cloud-init reported an error. Check its status in the VPSBG Console." >&2
-            exit 1
+            echo VITO_VPSBG_BOOT_ERROR
+            exit 0
             ;;
         *)
             echo VITO_VPSBG_BOOT_PENDING

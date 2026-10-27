@@ -18,7 +18,7 @@ Choose a billing cycle of **1, 3, 6, 12, or 24 months** on the server creation f
 
 Vito imports a separate SSH key for each server. The hostname is derived from the server name and prefixed with the Vito server ID. Readiness checks wait for a public IPv4 address, SSH access, cloud-init, and package-manager locks before starting Vito's installation.
 
-Boot readiness is checked through the SSH queue every 30 seconds for up to 30 minutes. Slow first-boot tasks are retried automatically without creating another VPS or order. The server stays **Installing** while waiting, and installation resumes once boot completes. Cloud-init errors and API authentication failures stop the checks; exhausting the window marks installation as failed. Automatic retries only cover initial boot and do not restart a partially completed installation.
+Boot readiness is checked through the SSH queue every 30 seconds for up to 30 minutes. Slow first-boot tasks and interrupted SSH checks are retried automatically without creating another VPS or order. The server stays **Installing** while waiting, and installation resumes once boot completes. Reported cloud-init errors and API authentication failures stop the checks; exhausting the window marks installation as failed. Automatic retries only cover initial boot and do not restart a partially completed installation.
 
 ## Disable or uninstall
 

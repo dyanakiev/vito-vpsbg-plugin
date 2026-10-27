@@ -245,7 +245,7 @@ test('vpsbg waits for first boot completion before starting core provisioning', 
     $this->assertDatabaseHas('servers', ['id' => $this->server->id, 'ip' => '203.0.113.10']);
 })->with(['VITO_VPSBG_BOOT_PENDING', '', 'unexpected output']);
 
-test('vpsbg retries an unreachable boot probe but propagates command failures', function (bool $connectionFailure) {
+test('vpsbg retries boot probes interrupted by SSH transport failures', function (bool $connectionFailure) {
     $this->server->jsonUpdate('provider_data', 'vpsbg_id', 77);
     Http::fake(['api.vpsbg.eu/v1/servers/77' => Http::response([
         'status' => 'active',
@@ -254,15 +254,25 @@ test('vpsbg retries an unreachable boot probe but propagates command failures', 
     SSH::shouldReceive('init')->once()->andReturnSelf();
     SSH::shouldReceive('exec')->once()->withArgs(function (...$arguments): bool {
         return str_contains((string) $arguments[0], 'VITO_VPSBG_BOOT_READY') && end($arguments) === 15;
-    })->andThrow($connectionFailure ? new SSHConnectionError('Connection refused') : new SSHCommandError(message: 'Boot failed'));
+    })->andThrow($connectionFailure ? new SSHConnectionError('Connection refused') : new SSHCommandError(message: 'SSH command timed out'));
 
-    if ($connectionFailure) {
-        expect($this->server->provider()->isRunning())->toBeFalse();
-    } else {
-        expect(fn () => $this->server->provider()->isRunning())->toThrow(SSHCommandError::class, 'Boot failed');
-    }
-    expect($this->server->fresh()->provider_data['boot_ready'] ?? false)->toBeFalse();
+    expect($this->server->provider()->isRunning())->toBeFalse()
+        ->and($this->server->fresh()->provider_data['boot_ready'] ?? false)->toBeFalse();
 })->with([true, false]);
+
+test('vpsbg stops boot checks when cloud init explicitly reports an error', function () {
+    $this->server->jsonUpdate('provider_data', 'vpsbg_id', 77);
+    Http::fake(['api.vpsbg.eu/v1/servers/77' => Http::response([
+        'status' => 'active',
+        'ip_addresses' => [['version' => 4, 'type' => 'public', 'ip_address' => '203.0.113.10', 'main' => true]],
+    ])]);
+    SSH::fake("\nVITO_VPSBG_BOOT_ERROR\n");
+
+    expect(fn () => $this->server->provider()->isRunning())->toThrow(
+        ServerProviderError::class, 'VPSBG cloud-init reported an error. Check its status in the VPSBG Console.',
+    );
+    expect($this->server->fresh()->provider_data['boot_ready'] ?? false)->toBeFalse();
+});
 
 test('vpsbg deletes with the current remote hostname and respects keeping the remote server', function (bool $delete, int $status) {
     $this->server->jsonUpdate('provider_data', 'vpsbg_id', 77);

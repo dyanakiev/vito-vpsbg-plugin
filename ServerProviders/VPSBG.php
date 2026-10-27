@@ -3,6 +3,7 @@
 namespace App\Vito\Plugins\Dyanakiev\VitoVpsbgPlugin\ServerProviders;
 
 use App\Exceptions\ServerProviderError;
+use App\Exceptions\SSHCommandError;
 use App\Exceptions\SSHConnectionError;
 use App\ServerProviders\AbstractProvider;
 use Illuminate\Http\Client\ConnectionException;
@@ -142,8 +143,12 @@ class VPSBG extends AbstractProvider
         if (! ($this->server->provider_data['boot_ready'] ?? false)) {
             try {
                 $state = $this->server->ssh()->exec(view('vpsbg::ssh.boot-ready'), timeout: 15);
-            } catch (SSHConnectionError) {
+            } catch (SSHConnectionError|SSHCommandError) {
                 return false;
+            }
+
+            if (trim($state) === 'VITO_VPSBG_BOOT_ERROR') {
+                throw new ServerProviderError('VPSBG cloud-init reported an error. Check its status in the VPSBG Console.');
             }
 
             if (trim($state) !== 'VITO_VPSBG_BOOT_READY') {

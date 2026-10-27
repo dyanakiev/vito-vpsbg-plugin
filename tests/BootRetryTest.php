@@ -2,6 +2,7 @@
 
 use App\Actions\Server\InstallServer as CoreInstallServer;
 use App\Enums\ServerStatus;
+use App\Exceptions\SSHCommandError;
 use App\Exceptions\SSHConnectionError;
 use App\Facades\SSH;
 use App\Jobs\Server\InstallJob;
@@ -126,16 +127,26 @@ test('pending boot checks release the same bounded job without creating another 
     $this->assertDatabaseHas('servers', ['id' => $this->server->id, 'status' => ServerStatus::INSTALLING->value, 'progress' => 0]);
 });
 
-test('pending then ready hands off to stock installation and duplicate resumes do not reinstall', function () {
+test('pending or interrupted probes then ready hand off once to stock installation', function (bool $interrupted) {
     Http::fake(['api.vpsbg.eu/v1/servers/77' => Http::response($this->vpsbgActive)]);
-    $job = (new WaitForBootJob($this->server))->withFakeQueueInteractions();
+    if ($interrupted) {
+        SSH::shouldReceive('init')->once()->andReturnSelf();
+        SSH::shouldReceive('exec')->once()->andThrow(new SSHCommandError(message: 'SSH command timed out'));
+    }
+    $original = new WaitForBootJob($this->server);
+    $deadline = $original->retryUntil()->getTimestamp();
+    $job = unserialize(serialize($original))->withFakeQueueInteractions();
     $job->handle();
-    $job->assertReleased(30);
+    $job->assertReleased(30)->assertNotFailed();
+    expect($job->retryUntil()->getTimestamp())->toBe($deadline);
     Queue::assertNotPushed(ResumeInstallationJob::class);
+    $this->assertDatabaseHas('servers', ['id' => $this->server->id, 'status' => ServerStatus::INSTALLING->value, 'progress' => 0]);
 
+    $this->travel(31)->seconds();
     SSH::fake('VITO_VPSBG_BOOT_READY');
     $job->withFakeQueueInteractions()->handle();
     $job->assertNotReleased()->assertNotFailed();
+    expect($job->retryUntil()->getTimestamp())->toBe($deadline);
     Queue::assertPushed(ResumeInstallationJob::class, 1);
     Queue::assertPushed(ResumeInstallationJob::class, fn (ResumeInstallationJob $resume): bool => $resume->connection === 'ssh'
         && $resume->queue === 'ssh' && $resume->delay->getTimestamp() === now()->addSecond()->getTimestamp());
@@ -156,7 +167,7 @@ test('pending then ready hands off to stock installation and duplicate resumes d
     expect(SSH::getExecutedCommands())->toBe($commands)->and(Http::recorded())->toHaveCount($requests);
     Notification::assertSentToTimes($this->notificationChannel, ServerInstallationSucceed::class, 1);
     Http::assertNotSent(fn (Request $request): bool => $request->method() !== 'GET');
-});
+})->with([false, true]);
 
 test('wait jobs skip servers that left the initial installation state', function (string $state) {
     $job = (new WaitForBootJob($this->server))->withFakeQueueInteractions();
@@ -203,12 +214,12 @@ test('expired boot checks fail with the same deadline even before another worker
     Notification::assertSentTo($this->notificationChannel, ServerInstallationFailed::class);
 })->with([true, false]);
 
-test('actual API and cloud init failures stop boot retries and report safe errors', function (bool $sshFailure) {
+test('actual API and cloud init failures stop boot retries and report safe errors', function (bool $cloudInitFailure) {
     Http::fake(['api.vpsbg.eu/v1/servers/77' => Http::response(
-        $sshFailure ? $this->vpsbgActive : ['message' => 'private-token upstream details'], $sshFailure ? 200 : 500,
+        $cloudInitFailure ? $this->vpsbgActive : ['message' => 'private-token upstream details'], $cloudInitFailure ? 200 : 500,
     )]);
-    if ($sshFailure) {
-        SSH::fake()->execWillFail();
+    if ($cloudInitFailure) {
+        SSH::fake('VITO_VPSBG_BOOT_ERROR');
     }
     $job = (new WaitForBootJob($this->server))->withFakeQueueInteractions();
     $job->handle();
@@ -217,7 +228,7 @@ test('actual API and cloud init failures stop boot retries and report safe error
 
     $this->assertDatabaseHas('servers', ['id' => $this->server->id, 'status' => ServerStatus::INSTALLATION_FAILED->value]);
     $log = ServerLog::query()->where('server_id', $this->server->id)->where('type', 'server-installation-failed')->sole();
-    expect($log->getContent())->toContain($sshFailure ? 'boot readiness checks failed' : 'HTTP 500')->not->toContain('private-token', 'upstream details');
+    expect($log->getContent())->toContain($cloudInitFailure ? 'VPSBG cloud-init reported an error.' : 'HTTP 500')->not->toContain('private-token', 'upstream details');
     Queue::assertNotPushed(ResumeInstallationJob::class);
     Http::assertSentCount(1);
 })->with([false, true]);
@@ -297,7 +308,7 @@ test('worker payload keeps the original boot deadline and bounded execution time
     Http::assertSentCount(1);
 });
 
-test('real Redis worker retries boot until ready or its original deadline expires', function (bool $becomesReady) {
+test('real Redis worker retries boot until ready or its original deadline expires', function (bool $becomesReady, bool $interrupted) {
     $redis = (new ConfigurationUrlParser)->parseConfiguration(config('database.redis.default'));
     $redis['database'] = 15;
     $redis['options']['prefix'] = 'vpsbg-test-'.Str::uuid().':';
@@ -330,8 +341,12 @@ test('real Redis worker retries boot until ready or its original deadline expire
         $this->travel(11)->seconds();
         $worker->runNextJob('ssh', 'ssh', $options);
         expect($connection->delayedSize('ssh'))->toBe(1);
+        if ($interrupted) {
+            SSH::fake()->execWillFail();
+        }
         $this->travel(601)->seconds();
         $worker->runNextJob('ssh', 'ssh', $options);
+        expect($connection->delayedSize('ssh'))->toBe(1);
         $this->assertDatabaseHas('servers', ['id' => $this->server->id, 'status' => ServerStatus::INSTALLING->value, 'progress' => 0]);
         Notification::assertNothingSent();
 
@@ -376,4 +391,4 @@ test('real Redis worker retries boot until ready or its original deadline expire
         app('redis')->purge('vpsbg_boot_test');
         Queue::swap($fake);
     }
-})->with([true, false])->skip(fn (): bool => getenv('VPSBG_TEST_REDIS') !== '1', 'Set VPSBG_TEST_REDIS=1 to run the isolated Redis worker integration.');
+})->with([[true, false], [true, true], [false, false]])->skip(fn (): bool => getenv('VPSBG_TEST_REDIS') !== '1', 'Set VPSBG_TEST_REDIS=1 to run the isolated Redis worker integration.');
